@@ -9,7 +9,6 @@ import argparse
 from glob import glob
 from collections import Counter
 
-# ===================== CONFIG =====================
 WINDOW_SECONDS = 1.4
 CHECK_EVERY_SECONDS = 0.6
 MIN_ROLL_FRAMES = 16
@@ -17,12 +16,9 @@ MIN_ROLL_FRAMES = 16
 TARGET_LEN = 45
 DTW_BAND = 7
 
-# ✅ GaHu dataset-friendly (marks attendance reliably)
-DTW_THRESHOLD = 0.42      # was 0.38 (too strict for this dataset)
-MIN_GAP = 0.008           # was 0.012 (still safe-ish, but allows marking)
+DTW_THRESHOLD = 0.42      
+MIN_GAP = 0.008           
 UNKNOWN_NAME = "UNKNOWN"
-
-# ✅ Voting tuned for jittery dataset (2 confident hits in last 7 checks)
 VOTE_WINDOW = 7
 VOTE_MIN_WINS = 2
 
@@ -31,10 +27,9 @@ COOLDOWN_SECONDS = 4
 DB_DIR = "dataset"
 ATT_FILE = "attendance.csv"
 
-# DB extraction robustness
 MIN_POSE_FRAMES = 16
 START_OFFSET_SECONDS = 1.5
-# ==================================================
+
 
 os.makedirs(DB_DIR, exist_ok=True)
 
@@ -42,8 +37,6 @@ mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(model_complexity=0, smooth_landmarks=True)
 mp_draw = mp.solutions.drawing_utils
 
-
-# ================= GAIT FEATURES (10 per frame) =================
 def _xy(res, idx: int) -> np.ndarray:
     lm = res.pose_landmarks.landmark[idx]
     return np.array([lm.x, lm.y], dtype=np.float32)
@@ -98,8 +91,6 @@ def extract_frame_features(res, prev_state):
 
     return feats, (la, ra, hip_mid)
 
-
-# ================= SEQUENCE UTILS =================
 def list_db_samples():
     return sorted([fn[:-4] for fn in os.listdir(DB_DIR) if fn.endswith(".npz")])
 
@@ -159,9 +150,6 @@ def reset_database():
     if os.path.exists(ATT_FILE):
         os.remove(ATT_FILE)
     print("Database cleared.")
-
-
-# ================= VIDEO -> FEATURE SEQ =================
 def extract_sequence_from_video(video_path: str, start_seconds=0.0, max_seconds=None, every_n=1):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -215,8 +203,6 @@ def extract_sequence_from_video(video_path: str, start_seconds=0.0, max_seconds=
     seq = znorm_rows(resample_sequence(seq, TARGET_LEN))
     return seq
 
-
-# ================= BUILD DB =================
 def build_db_from_folder(
     dataset_root: str,
     pattern="*.avi",
@@ -273,8 +259,6 @@ def build_db_from_folder(
     print(f"\nDone. Saved {saved} samples.")
     print("DB samples:", list_db_samples())
 
-
-# ================= MATCHING (ALL PEOPLE) =================
 def decide_identity_person_level(live_seq, person_to_samples, db_sequences):
     """
     Person-level scoring:
@@ -296,8 +280,6 @@ def decide_identity_person_level(live_seq, person_to_samples, db_sequences):
     confident = (best_d < DTW_THRESHOLD) and (gap > MIN_GAP)
     return best_person, best_d, second_d, gap, confident
 
-
-# ================= ATTENDANCE =================
 def run_attendance_on_video(video_path: str, display=True, max_seconds=None):
     db_samples = list_db_samples()
     if len(db_samples) < 2:
@@ -326,7 +308,6 @@ def run_attendance_on_video(video_path: str, display=True, max_seconds=None):
     prev_state = None
     last_check_t = -1e9
 
-    # ✅ confidence-only vote buffer
     recent_conf_preds = []
 
     frame_idx = 0
@@ -375,7 +356,7 @@ def run_attendance_on_video(video_path: str, display=True, max_seconds=None):
 
                 print(f"[DBG] best={best_person} d={best_d:.3f} second={second_d:.3f} gap={gap:.3f} confident={confident}")
 
-                # ✅ Vote ONLY on confident hits
+              
                 if confident:
                     recent_conf_preds.append(best_person)
                 else:
@@ -389,8 +370,6 @@ def run_attendance_on_video(video_path: str, display=True, max_seconds=None):
                 if valid:
                     c = Counter(valid)
                     winner, wins = c.most_common(1)[0]
-
-                # ✅ Mark quickly once it gets 2 confident hits in last 7 checks
                 if (winner is not None and wins >= VOTE_MIN_WINS and (t - last_mark_t) > COOLDOWN_SECONDS):
                     if not any(a[0] == winner for a in attendance):
                         now_str = datetime.now().strftime("%H:%M:%S")
@@ -425,8 +404,6 @@ def run_attendance_on_video(video_path: str, display=True, max_seconds=None):
     print("Attendance saved at:", os.path.abspath(ATT_FILE))
     print(df if len(df) else "No attendance marked.")
 
-
-# ================= MAIN =================
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["reset", "build_db", "attendance"], required=True)
