@@ -1,20 +1,3 @@
-"""
-FAST + ACCURATE DTW Pose-Gait Attendance (Demo Final)
-
-Improvements vs your current version:
-- Much faster recognition using rolling/sliding window (no need to walk many times)
-- Person-level matching using multiple samples (Arisha_1, Arisha_2 -> person "Arisha")
-- Still safe: DTW threshold + gap check + stable confirmations
-- Built-in RESET database option
-- Privacy-preserving: stores ONLY pose-gait features, no face, no raw video saved
-
-Run:
-    python gait_attendance_dtw_final.py
-
-Keys:
-    ESC -> quit
-"""
-
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -23,25 +6,20 @@ import time
 import os
 import shutil
 from datetime import datetime
-
-# ===================== CONFIG =====================
 TIME_LIMIT_SECONDS = 10 * 60
 REGISTER_SECONDS = 8
 
-# ---------- FAST recognition ----------
-# Sliding window: evaluate every CHECK_EVERY_SECONDS using last WINDOW_SECONDS of frames.
-WINDOW_SECONDS = 1.4              # collect ~1.4s gait window
-CHECK_EVERY_SECONDS = 0.6         # run recognition every ~0.6s
-MIN_ROLL_FRAMES = 16              # minimum frames required inside window
+WINDOW_SECONDS = 1.4              
+CHECK_EVERY_SECONDS = 0.6      
+MIN_ROLL_FRAMES = 16            
 
-# DTW speed
-TARGET_LEN = 45                   # resample length for DTW
-DTW_BAND = 7                      # narrower band => faster
 
+TARGET_LEN = 45                  
+DTW_BAND = 7                     
 # Safety / accuracy
-DTW_THRESHOLD = 0.44              # if too many UNKNOWNs -> 0.46
-MIN_GAP = 0.07                    # if wrong matches -> 0.09
-STABLE_DECISIONS = 2              # need same person 2 times in a row
+DTW_THRESHOLD = 0.44              
+MIN_GAP = 0.07
+STABLE_DECISIONS = 2              
 
 COOLDOWN_SECONDS = 2
 LEAVE_RESET_FRAMES = 12
@@ -49,16 +27,13 @@ UNKNOWN_NAME = "UNKNOWN"
 
 DB_DIR = "gait_db"
 ATT_FILE = "attendance.csv"
-# ==================================================
 
 os.makedirs(DB_DIR, exist_ok=True)
 
-# ---------- MediaPipe (faster) ----------
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(model_complexity=0, smooth_landmarks=True)  # 0 = fastest
 mp_draw = mp.solutions.drawing_utils
 
-# ---------- Camera (speed) ----------
 cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
@@ -68,7 +43,6 @@ if not cap.isOpened():
     raise SystemExit
 
 
-# ================= GAIT FEATURES (10 per frame) =================
 def _xy(res, idx: int) -> np.ndarray:
     lm = res.pose_landmarks.landmark[idx]
     return np.array([lm.x, lm.y], dtype=np.float32)
@@ -126,8 +100,6 @@ def extract_frame_features(res, prev_state):
 
     return feats, (la, ra, hip_mid)
 
-
-# ================= SEQUENCE UTILS =================
 def list_db_samples():
     return sorted([fn[:-4] for fn in os.listdir(DB_DIR) if fn.endswith(".npz")])
 
@@ -188,8 +160,6 @@ def reset_database():
         os.remove(ATT_FILE)
     print("Database cleared.")
 
-
-# ================= MODE =================
 print("\n===== GAIT ATTENDANCE (DTW) =====")
 print("1) Register new sample")
 print("2) Attendance mode")
@@ -204,7 +174,6 @@ if mode == "3":
 
 register = (mode == "1")
 
-# ================= REGISTRATION =================
 if register:
     sample_name = input("Enter sample name (Arisha_1, Arisha_2, Friend_1...): ").strip()
     print(f"Registering '{sample_name}' for {REGISTER_SECONDS}s.")
@@ -249,13 +218,11 @@ if register:
     raise SystemExit
 
 
-# ================= ATTENDANCE =================
 db_samples = list_db_samples()
 if len(db_samples) < 2:
     print("Register at least 2 samples first.")
     raise SystemExit
 
-# Group samples by person
 person_to_samples = {}
 for s in db_samples:
     person_to_samples.setdefault(base_name(s), []).append(s)
@@ -276,7 +243,7 @@ last_mark_time = 0
 candidate = None
 candidate_decisions = 0
 
-roll = []                # list of (timestamp, feature_vector)
+roll = []               
 prev_state = None
 last_check_time = 0
 
@@ -340,13 +307,13 @@ while True:
     now = time.time()
     roll.append((now, feats))
 
-    # Keep only last WINDOW_SECONDS
+   
     cutoff = now - WINDOW_SECONDS
     roll = [(t, f) for (t, f) in roll if t >= cutoff]
 
     label_line = "Collecting gait..."
 
-    # Check every CHECK_EVERY_SECONDS
+  
     if (now - last_check_time) >= CHECK_EVERY_SECONDS and len(roll) >= MIN_ROLL_FRAMES:
         last_check_time = now
 
@@ -356,7 +323,6 @@ while True:
         best_person, best_d, second_d, gap, confident = decide_identity_person_level(live_seq)
         pred = best_person if confident else UNKNOWN_NAME
 
-        # Stability logic (prevents random single-frame matches)
         if confident and not locked:
             if candidate == pred:
                 candidate_decisions += 1
@@ -367,7 +333,7 @@ while True:
             candidate = None
             candidate_decisions = 0
 
-        # Mark attendance
+       
         if (candidate is not None and candidate_decisions >= STABLE_DECISIONS
                 and (now - last_mark_time) > COOLDOWN_SECONDS):
 
